@@ -9,6 +9,7 @@ from bookmarks.services import tasks, website_loader
 from bookmarks.services.bookmarks import (
     archive_bookmark,
     archive_bookmarks,
+    check_bookmark_links,
     create_bookmark,
     create_html_snapshots,
     delete_bookmarks,
@@ -1025,6 +1026,43 @@ class BookmarkServiceTestCase(TestCase, BookmarkFactoryMixin):
 
             self.assertEqual("", bookmark.title)
             self.assertEqual("", bookmark.description)
+
+    def test_check_bookmark_links(self):
+        bookmark1 = self.setup_bookmark()
+        bookmark2 = self.setup_bookmark()
+        self.setup_bookmark()
+        user = self.get_or_create_test_user()
+
+        with patch.object(tasks, "check_link_health") as mock_check_link_health:
+            check_bookmark_links([bookmark1.id, bookmark2.id], user)
+
+            mock_check_link_health.assert_called_once()
+            bookmark_ids, called_user = mock_check_link_health.call_args[0]
+            self.assertCountEqual(bookmark_ids, [bookmark1.id, bookmark2.id])
+            self.assertEqual(called_user, user)
+
+    def test_check_bookmark_links_should_only_check_owned_bookmarks(self):
+        bookmark = self.setup_bookmark()
+        other_user = self.setup_user()
+        other_bookmark = self.setup_bookmark(user=other_user)
+        user = self.get_or_create_test_user()
+
+        with patch.object(tasks, "check_link_health") as mock_check_link_health:
+            check_bookmark_links([bookmark.id, other_bookmark.id], user)
+
+            bookmark_ids, _ = mock_check_link_health.call_args[0]
+            self.assertEqual(list(bookmark_ids), [bookmark.id])
+
+    def test_check_bookmark_links_accepts_string_ids(self):
+        bookmark1 = self.setup_bookmark()
+        bookmark2 = self.setup_bookmark()
+        user = self.get_or_create_test_user()
+
+        with patch.object(tasks, "check_link_health") as mock_check_link_health:
+            check_bookmark_links([str(bookmark1.id), str(bookmark2.id)], user)
+
+            bookmark_ids, _ = mock_check_link_health.call_args[0]
+            self.assertCountEqual(bookmark_ids, [bookmark1.id, bookmark2.id])
 
     def test_refresh_bookmarks_metadata(self):
         bookmark1 = self.setup_bookmark()

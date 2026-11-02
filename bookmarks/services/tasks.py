@@ -406,15 +406,34 @@ def check_link_health(bookmark_ids: list[int], user: User):
     # Manually triggered checks run regardless of the periodic check setting
     if settings.LD_DISABLE_BACKGROUND_TASKS:
         return
+    _enqueue_link_health_checks(bookmark_ids)
+
+
+def _enqueue_link_health_checks(bookmark_ids: list[int], not_checked_since=None):
     bookmark_ids = list(bookmark_ids)
     for start in range(0, len(bookmark_ids), LINK_HEALTH_CHECK_BATCH_SIZE):
-        _check_link_health_task(
-            bookmark_ids[start : start + LINK_HEALTH_CHECK_BATCH_SIZE]
-        )
+        batch = bookmark_ids[start : start + LINK_HEALTH_CHECK_BATCH_SIZE]
+        _check_link_health_task(batch, not_checked_since=not_checked_since)
+
+
+def _query_link_health_due(threshold) -> Q:
+    return Q(link_last_checked__isnull=True) | Q(link_last_checked__lt=threshold)
 
 
 @task()
-def _check_link_health_task(bookmark_ids: list[int]):
+def _check_link_health_task(bookmark_ids: list[int], not_checked_since=None):
+    # The scheduler may enqueue the same bookmarks again before a previous task
+    # has processed them, for example when the queue is backed up. Skip
+    # bookmarks that have been checked since they were scheduled.
+    if not_checked_since is not None:
+        bookmark_ids = list(
+            Bookmark.objects.filter(
+                _query_link_health_due(not_checked_since), id__in=bookmark_ids
+            ).values_list("id", flat=True)
+        )
+        if not bookmark_ids:
+            return
+
     link_health.check_bookmarks(bookmark_ids)
 
 
@@ -429,10 +448,10 @@ def _schedule_link_health_checks():
     ).select_related("user")
     for profile in profiles:
         threshold = now - timedelta(hours=profile.link_health_check_interval)
+        # Includes archived bookmarks
         bookmark_ids = list(
-            Bookmark.objects.filter(owner=profile.user)
-            .filter(
-                Q(link_last_checked__isnull=True) | Q(link_last_checked__lt=threshold)
+            Bookmark.objects.filter(
+                _query_link_health_due(threshold), owner=profile.user
             )
             .order_by("id")
             .values_list("id", flat=True)
@@ -441,4 +460,4 @@ def _schedule_link_health_checks():
             logger.info(
                 f"Scheduling link health checks. user={profile.user.username} count={len(bookmark_ids)}"
             )
-            check_link_health(bookmark_ids, profile.user)
+            _enqueue_link_health_checks(bookmark_ids, not_checked_since=threshold)
