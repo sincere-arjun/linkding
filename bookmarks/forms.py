@@ -264,6 +264,10 @@ class BookmarkSearchForm(forms.Form):
         (BookmarkSearch.FILTER_UNREAD_YES, "Unread"),
         (BookmarkSearch.FILTER_UNREAD_NO, "Read"),
     ]
+    FILTER_BROKEN_CHOICES = [
+        (BookmarkSearch.FILTER_BROKEN_OFF, "Off"),
+        (BookmarkSearch.FILTER_BROKEN_YES, "Broken"),
+    ]
 
     q = forms.CharField()
     user = forms.ChoiceField(required=False, widget=FormSelect)
@@ -273,6 +277,7 @@ class BookmarkSearchForm(forms.Form):
     unread = forms.ChoiceField(choices=FILTER_UNREAD_CHOICES, widget=forms.RadioSelect)
     modified_since = forms.CharField(required=False)
     added_since = forms.CharField(required=False)
+    broken = forms.ChoiceField(choices=FILTER_BROKEN_CHOICES, widget=forms.RadioSelect)
 
     def __init__(
         self,

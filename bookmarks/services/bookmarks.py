@@ -215,6 +215,15 @@ def create_html_snapshots(bookmark_ids: list[int | str], current_user: User):
     tasks.create_html_snapshots(owned_bookmarks)
 
 
+def check_bookmark_links(bookmark_ids: list[int | str], current_user: User):
+    sanitized_bookmark_ids = _sanitize_id_list(bookmark_ids)
+    owned_bookmark_ids = Bookmark.objects.filter(
+        owner=current_user, id__in=sanitized_bookmark_ids
+    ).values_list("id", flat=True)
+
+    tasks.check_link_health(list(owned_bookmark_ids), current_user)
+
+
 def _merge_bookmark_data(from_bookmark: Bookmark, to_bookmark: Bookmark):
     to_bookmark.title = from_bookmark.title
     to_bookmark.description = from_bookmark.description

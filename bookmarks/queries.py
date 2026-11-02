@@ -265,6 +265,10 @@ def _base_bookmarks_query(
     elif search.shared == BookmarkSearch.FILTER_SHARED_UNSHARED:
         query_set = query_set.filter(shared=False)
 
+    # Broken links filter
+    if search.broken == BookmarkSearch.FILTER_BROKEN_YES:
+        query_set = query_set.filter(link_broken=True)
+
     # Filter by bundle
     if search.bundle:
         query_set = _filter_bundle(query_set, search.bundle)
