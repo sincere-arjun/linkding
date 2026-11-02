@@ -60,8 +60,9 @@ Link health checks can be enabled per user in the settings, and run in the backg
 
 Values: `Float` | Default = `1.0`
 
-Minimum delay in seconds between two link health check requests to the same host.
+Delay in seconds between checking two bookmarks on the same host, within one batch of link health checks.
 This avoids sending many requests to a website in a short time when checking a lot of bookmarks from the same site.
+The delay is not applied between the `HEAD` request and the `GET` fallback for the same bookmark, and separate batches can run in parallel on different background workers.
 Set to `0` to disable the delay.
 
 ### `LD_SUPERVISOR_MANAGED` (Experimental)

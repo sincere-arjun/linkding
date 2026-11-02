@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 
 from django.conf import settings
+from django.db.models import Case, F, Value, When
 from django.utils import timezone
 
 from bookmarks.models import Bookmark
@@ -81,25 +82,44 @@ class HostRateLimiter:
         self._last_request[host] = self.clock()
 
 
+RESULT_FIELDS = [
+    "link_status_code",
+    "link_check_error",
+    "link_last_checked",
+    "link_failure_count",
+    "link_broken",
+]
+
+
 def record_result(bookmark: Bookmark, result: LinkCheckResult) -> None:
-    bookmark.link_status_code = result.status_code
-    bookmark.link_check_error = result.error[:255]
-    bookmark.link_last_checked = timezone.now()
     if result.ok:
-        bookmark.link_failure_count = 0
-        bookmark.link_broken = False
+        failure_count = Value(0)
+        broken = Value(False)
     else:
-        bookmark.link_failure_count += 1
-        bookmark.link_broken = bookmark.link_failure_count >= MAX_FAILURES
-    bookmark.save(
-        update_fields=[
-            "link_status_code",
-            "link_check_error",
-            "link_last_checked",
-            "link_failure_count",
-            "link_broken",
-        ]
+        # Increment in the database, so that concurrent checks of the same
+        # bookmark don't overwrite each other's failures. Expressions in an
+        # UPDATE see the row before the update, so compare against the old count.
+        failure_count = F("link_failure_count") + 1
+        broken = Case(
+            When(link_failure_count__gte=MAX_FAILURES - 1, then=Value(True)),
+            default=Value(False),
+        )
+
+    # Use a queryset update instead of save(), which raises if the bookmark
+    # was deleted while its link was being checked
+    Bookmark.objects.filter(id=bookmark.id).update(
+        link_status_code=result.status_code,
+        link_check_error=result.error[:255],
+        link_last_checked=timezone.now(),
+        link_failure_count=failure_count,
+        link_broken=broken,
     )
+
+    values = Bookmark.objects.filter(id=bookmark.id).values(*RESULT_FIELDS).first()
+    if values is None:
+        return
+    for field, value in values.items():
+        setattr(bookmark, field, value)
 
 
 def check_bookmarks(bookmark_ids: list[int], rate_limiter=None) -> None:

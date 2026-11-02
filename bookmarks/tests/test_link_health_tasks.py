@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest import mock
 
 from django.test import TestCase, override_settings
@@ -6,7 +6,7 @@ from django.utils import timezone
 from huey.contrib.djhuey import HUEY as huey
 
 from bookmarks.models import Bookmark
-from bookmarks.services import tasks
+from bookmarks.services import link_health, tasks
 from bookmarks.tests.helpers import BookmarkFactoryMixin
 
 
@@ -206,3 +206,62 @@ class LinkHealthTasksTestCase(TestCase, BookmarkFactoryMixin):
         tasks._check_link_health_task(*args, **kwargs)
 
         self.mock_check_bookmarks.assert_not_called()
+
+    def test_schedule_is_registered_as_periodic_task_every_15_minutes(self):
+        task_class = tasks._schedule_link_health_checks.task_class
+
+        def is_scheduled_at(minute: int) -> bool:
+            due_tasks = huey.read_periodic(datetime(2026, 1, 1, 10, minute))
+            return any(isinstance(task, task_class) for task in due_tasks)
+
+        for minute in [0, 15, 30, 45]:
+            self.assertTrue(is_scheduled_at(minute), f"not scheduled at :{minute}")
+        for minute in [1, 7, 14, 59]:
+            self.assertFalse(is_scheduled_at(minute), f"scheduled at :{minute}")
+
+
+class CheckBookmarksTestCase(TestCase, BookmarkFactoryMixin):
+    def setUp(self):
+        self.rate_limiter = link_health.HostRateLimiter(0)
+
+    def failed_result(self):
+        return link_health.LinkCheckResult(status_code=404, error="", ok=False)
+
+    def test_bookmark_deleted_during_check_does_not_abort_batch(self):
+        bookmark1 = self.setup_bookmark(url="https://example.com/1")
+        bookmark2 = self.setup_bookmark(url="https://example.com/2")
+        bookmark3 = self.setup_bookmark(url="https://example.com/3")
+
+        def check_url(url):
+            # User deletes the bookmark while its link is being checked
+            if url == bookmark2.url:
+                Bookmark.objects.filter(id=bookmark2.id).delete()
+            return self.failed_result()
+
+        with mock.patch.object(link_health, "check_url", side_effect=check_url):
+            link_health.check_bookmarks(
+                [bookmark1.id, bookmark2.id, bookmark3.id],
+                rate_limiter=self.rate_limiter,
+            )
+
+        self.assertFalse(Bookmark.objects.filter(id=bookmark2.id).exists())
+        for bookmark in [bookmark1, bookmark3]:
+            bookmark.refresh_from_db()
+            self.assertEqual(bookmark.link_status_code, 404)
+            self.assertEqual(bookmark.link_failure_count, 1)
+            self.assertIsNotNone(bookmark.link_last_checked)
+
+    def test_failure_count_is_incremented_atomically(self):
+        bookmark = self.setup_bookmark(url="https://example.com")
+
+        def check_url(url):
+            # Another run records two failures while this check is in progress
+            Bookmark.objects.filter(id=bookmark.id).update(link_failure_count=2)
+            return self.failed_result()
+
+        with mock.patch.object(link_health, "check_url", side_effect=check_url):
+            link_health.check_bookmarks([bookmark.id], rate_limiter=self.rate_limiter)
+
+        bookmark.refresh_from_db()
+        self.assertEqual(bookmark.link_failure_count, 3)
+        self.assertTrue(bookmark.link_broken)
