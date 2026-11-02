@@ -174,6 +174,12 @@ LD_DISABLE_BACKGROUND_TASKS = os.getenv("LD_DISABLE_BACKGROUND_TASKS", False) in
     "1",
 )
 
+# Link health checks
+# Timeout in seconds for a single request when checking a bookmark URL
+LD_LINK_CHECK_TIMEOUT = float(os.getenv("LD_LINK_CHECK_TIMEOUT", 10))
+# Minimum delay in seconds between requests to the same host
+LD_LINK_CHECK_HOST_DELAY = float(os.getenv("LD_LINK_CHECK_HOST_DELAY", 1.0))
+
 # Huey task queue
 HUEY = {
     "huey_class": "huey.SqliteHuey",

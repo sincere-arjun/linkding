@@ -78,6 +78,11 @@ class Bookmark(models.Model):
         blank=True,
         related_name="latest_snapshot",
     )
+    link_status_code = models.IntegerField(null=True, blank=True)
+    link_check_error = models.CharField(max_length=255, blank=True, default="")
+    link_last_checked = models.DateTimeField(null=True, blank=True)
+    link_failure_count = models.PositiveIntegerField(default=0)
+    link_broken = models.BooleanField(default=False, db_index=True)
 
     @property
     def resolved_title(self):
@@ -237,6 +242,9 @@ class BookmarkSearch:
     FILTER_UNREAD_YES = "yes"
     FILTER_UNREAD_NO = "no"
 
+    FILTER_BROKEN_OFF = "off"
+    FILTER_BROKEN_YES = "yes"
+
     params = [
         "q",
         "user",
@@ -246,6 +254,7 @@ class BookmarkSearch:
         "unread",
         "modified_since",
         "added_since",
+        "broken",
     ]
     preferences = ["sort", "shared", "unread"]
     defaults = {
@@ -257,6 +266,7 @@ class BookmarkSearch:
         "unread": FILTER_UNREAD_OFF,
         "modified_since": None,
         "added_since": None,
+        "broken": FILTER_BROKEN_OFF,
     }
 
     def __init__(
@@ -269,6 +279,7 @@ class BookmarkSearch:
         unread: str = None,
         modified_since: str = None,
         added_since: str = None,
+        broken: str = None,
         preferences: dict = None,
         request: any = None,
     ):
@@ -285,6 +296,7 @@ class BookmarkSearch:
         self.unread = unread or self.defaults["unread"]
         self.modified_since = modified_since or self.defaults["modified_since"]
         self.added_since = added_since or self.defaults["added_since"]
+        self.broken = broken or self.defaults["broken"]
 
     def is_modified(self, param):
         value = self.__dict__[param]
@@ -392,6 +404,12 @@ class UserProfile(models.Model):
         (TAG_GROUPING_ALPHABETICAL, "Alphabetical"),
         (TAG_GROUPING_DISABLED, "Disabled"),
     ]
+    LINK_HEALTH_CHECK_INTERVAL_CHOICES = [
+        (6, "Every 6 hours"),
+        (12, "Every 12 hours"),
+        (24, "Daily"),
+        (168, "Weekly"),
+    ]
     user = models.OneToOneField(User, related_name="profile", on_delete=models.CASCADE)
     theme = models.CharField(
         max_length=10, choices=THEME_CHOICES, blank=False, default=THEME_AUTO
@@ -460,6 +478,10 @@ class UserProfile(models.Model):
     collapse_side_panel = models.BooleanField(default=False, null=False)
     hide_bundles = models.BooleanField(default=False, null=False)
     legacy_search = models.BooleanField(default=False, null=False)
+    enable_link_health_checks = models.BooleanField(default=False, null=False)
+    link_health_check_interval = models.PositiveIntegerField(
+        choices=LINK_HEALTH_CHECK_INTERVAL_CHOICES, default=24, null=False
+    )
 
     def save(self, *args, **kwargs):
         if self.custom_css:

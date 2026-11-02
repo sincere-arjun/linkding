@@ -639,6 +639,95 @@ class BookmarkListTemplateTest(TestCase, BookmarkFactoryMixin, HtmlTestMixin):
         self.assertIsNotNone(list_item)
         self.assertListEqual(["unread", "shared"], list_item["class"])
 
+    def setup_broken_bookmark(self, **kwargs):
+        bookmark = self.setup_bookmark()
+        bookmark.link_broken = True
+        bookmark.link_failure_count = 3
+        bookmark.link_last_checked = timezone.now() - datetime.timedelta(hours=2)
+        for key, value in kwargs.items():
+            setattr(bookmark, key, value)
+        bookmark.save()
+        return bookmark
+
+    def format_last_checked(self, bookmark: Bookmark):
+        return formats.date_format(
+            timezone.localtime(bookmark.link_last_checked), "SHORT_DATETIME_FORMAT"
+        )
+
+    def test_should_not_render_broken_badge_for_healthy_bookmarks(self):
+        bookmark = self.setup_bookmark()
+        # Failures below the threshold are not reported as broken
+        bookmark.link_status_code = 404
+        bookmark.link_failure_count = 2
+        bookmark.link_last_checked = timezone.now()
+        bookmark.save()
+        html = self.render_template()
+        soup = self.make_soup(html)
+
+        self.assertIsNone(soup.select_one(".link-broken-badge"))
+        list_item = soup.select_one("ul.bookmark-list > li")
+        self.assertNotIn("class", list_item.attrs)
+
+    def test_should_render_broken_badge_with_status_code(self):
+        bookmark = self.setup_broken_bookmark(link_status_code=404)
+        html = self.render_template()
+        soup = self.make_soup(html)
+
+        badges = soup.select(".link-broken-badge")
+        self.assertEqual(len(badges), 1)
+        badge = badges[0]
+        self.assertEqual(badge.get_text(strip=True), "Broken")
+        self.assertEqual(
+            badge["title"],
+            f"Status code 404, last checked: {self.format_last_checked(bookmark)}",
+        )
+        list_item = soup.select_one("ul.bookmark-list > li")
+        self.assertListEqual(["link-broken"], list_item["class"])
+
+    def test_broken_badge_reason_is_available_to_screen_readers(self):
+        bookmark = self.setup_broken_bookmark(link_status_code=410)
+        html = self.render_template()
+        soup = self.make_soup(html)
+
+        badge = soup.select_one(".link-broken-badge")
+        # Visible text stays "Broken"
+        self.assertEqual(badge.get_text(strip=True), "Broken")
+
+        description_id = badge.get("aria-describedby")
+        self.assertIsNotNone(description_id)
+        description = soup.find(id=description_id)
+        self.assertIsNotNone(description)
+        self.assertIn("text-assistive", description["class"])
+        self.assertEqual(
+            description.get_text(strip=True),
+            f"Status code 410, last checked: {self.format_last_checked(bookmark)}",
+        )
+
+    def test_should_render_broken_badge_with_check_error(self):
+        bookmark = self.setup_broken_bookmark(
+            link_status_code=None, link_check_error="timeout"
+        )
+        html = self.render_template()
+        soup = self.make_soup(html)
+
+        badge = soup.select_one(".link-broken-badge")
+        self.assertIsNotNone(badge)
+        self.assertEqual(
+            badge["title"],
+            f"Error: timeout, last checked: {self.format_last_checked(bookmark)}",
+        )
+
+    def test_should_render_broken_badge_only_for_broken_bookmarks(self):
+        broken = self.setup_broken_bookmark(link_status_code=500)
+        healthy = self.setup_bookmark()
+        html = self.render_template()
+        soup = self.make_soup(html)
+
+        broken_item = soup.select_one(f'li[data-bookmark-id="{broken.id}"]')
+        healthy_item = soup.select_one(f'li[data-bookmark-id="{healthy.id}"]')
+        self.assertIsNotNone(broken_item.select_one(".link-broken-badge"))
+        self.assertIsNone(healthy_item.select_one(".link-broken-badge"))
+
     def test_show_bookmark_actions_for_owned_bookmarks(self):
         bookmark = self.setup_bookmark()
         html = self.render_template()

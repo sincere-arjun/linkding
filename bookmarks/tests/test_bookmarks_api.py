@@ -346,6 +346,34 @@ class BookmarksApiTestCase(LinkdingApiTestCase, BookmarkFactoryMixin):
         )
         self.assertBookmarkListEqual(response.data["results"], shared_bookmarks)
 
+    def setup_shared_broken_and_healthy_bookmarks(self):
+        owner = self.setup_user(enable_sharing=True, enable_public_sharing=True)
+        healthy = self.setup_bookmark(shared=True, user=owner)
+        broken = self.setup_bookmark(shared=True, user=owner)
+        broken.link_broken = True
+        broken.link_failure_count = 3
+        broken.save()
+        return [healthy, broken]
+
+    def test_list_shared_bookmarks_ignores_broken_filter_when_not_logged_in(self):
+        shared_bookmarks = self.setup_shared_broken_and_healthy_bookmarks()
+
+        response = self.get(
+            reverse("linkding:bookmark-shared") + "?broken=yes",
+            expected_status_code=status.HTTP_200_OK,
+        )
+        self.assertBookmarkListEqual(response.data["results"], shared_bookmarks)
+
+    def test_list_shared_bookmarks_ignores_broken_filter_for_other_user(self):
+        self.authenticate()
+        shared_bookmarks = self.setup_shared_broken_and_healthy_bookmarks()
+
+        response = self.get(
+            reverse("linkding:bookmark-shared") + "?broken=yes",
+            expected_status_code=status.HTTP_200_OK,
+        )
+        self.assertBookmarkListEqual(response.data["results"], shared_bookmarks)
+
     def test_list_shared_bookmarks_should_filter_by_query_and_user(self):
         self.authenticate()
 

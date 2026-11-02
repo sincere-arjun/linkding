@@ -54,7 +54,11 @@ def query_shared_bookmarks(
     if public_only:
         conditions = conditions & Q(owner__profile__enable_public_sharing=True)
 
-    return _base_bookmarks_query(user, profile, search).filter(conditions)
+    # Link health is private to the owner, so the broken filter is ignored here.
+    # Otherwise anyone could list which shared bookmarks are dead.
+    return _base_bookmarks_query(user, profile, search, filter_broken=False).filter(
+        conditions
+    )
 
 
 def _convert_ast_to_q_object(ast_node: SearchExpression, profile: UserProfile) -> Q:
@@ -228,6 +232,7 @@ def _base_bookmarks_query(
     user: User | None,
     profile: UserProfile,
     search: BookmarkSearch,
+    filter_broken: bool = True,
 ) -> QuerySet:
     query_set = Bookmark.objects
 
@@ -264,6 +269,10 @@ def _base_bookmarks_query(
         query_set = query_set.filter(shared=True)
     elif search.shared == BookmarkSearch.FILTER_SHARED_UNSHARED:
         query_set = query_set.filter(shared=False)
+
+    # Broken links filter
+    if filter_broken and search.broken == BookmarkSearch.FILTER_BROKEN_YES:
+        query_set = query_set.filter(link_broken=True)
 
     # Filter by bundle
     if search.bundle:

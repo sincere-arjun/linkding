@@ -236,3 +236,60 @@ class BookmarkSearchTagTest(TestCase, BookmarkFactoryMixin, HtmlTestMixin):
         self.assertUnmodifiedLabel(rendered_template, "Sort by")
         self.assertUnmodifiedLabel(rendered_template, "Shared filter")
         self.assertModifiedLabel(rendered_template, "Unread filter")
+
+    def test_broken_filter_inputs(self):
+        # Without params
+        url = "/test"
+        rendered_template = self.render_template(url)
+        soup = self.make_soup(rendered_template)
+        search_form = soup.select_one("form#search")
+        preferences_form = soup.select_one("form#search_preferences")
+
+        self.assertNoHiddenInput(search_form, "broken")
+        self.assertNoHiddenInput(preferences_form, "broken")
+        self.assertRadioGroup(
+            preferences_form, "broken", BookmarkSearch.FILTER_BROKEN_OFF
+        )
+        radios = preferences_form.select('input[name="broken"][type="radio"]')
+        self.assertEqual(
+            [radio["value"] for radio in radios],
+            [BookmarkSearch.FILTER_BROKEN_OFF, BookmarkSearch.FILTER_BROKEN_YES],
+        )
+        self.assertUnmodifiedLabel(rendered_template, "Link health filter")
+
+        # With broken filter
+        url = "/test?q=foo&broken=yes"
+        rendered_template = self.render_template(url)
+        soup = self.make_soup(rendered_template)
+        search_form = soup.select_one("form#search")
+        preferences_form = soup.select_one("form#search_preferences")
+
+        # Search form keeps the filter when submitting a new query
+        self.assertHiddenInput(search_form, "broken", BookmarkSearch.FILTER_BROKEN_YES)
+        self.assertNoHiddenInput(preferences_form, "broken")
+        self.assertRadioGroup(
+            preferences_form, "broken", BookmarkSearch.FILTER_BROKEN_YES
+        )
+        self.assertModifiedLabel(rendered_template, "Link health filter")
+
+        button = soup.select_one("button[aria-label='Search preferences']")
+        self.assertIn("badge", button["class"])
+
+    def test_broken_filter_not_available_in_shared_mode(self):
+        url = "/test"
+        rendered_template = self.render_template(url, mode="shared")
+        soup = self.make_soup(rendered_template)
+        preferences_form = soup.select_one("form#search_preferences")
+
+        self.assertNoRadioGroup(preferences_form, "broken")
+        self.assertNoHiddenInput(preferences_form, "broken")
+
+        url = "/test?broken=yes"
+        rendered_template = self.render_template(url, mode="shared")
+        soup = self.make_soup(rendered_template)
+        preferences_form = soup.select_one("form#search_preferences")
+
+        self.assertNoRadioGroup(preferences_form, "broken")
+        self.assertHiddenInput(
+            preferences_form, "broken", BookmarkSearch.FILTER_BROKEN_YES
+        )
