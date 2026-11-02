@@ -758,3 +758,4 @@ class BookmarkSharedViewTestCase(
 
         self.assertIn(healthy_bookmark.url, html)
         self.assertIn(broken_bookmark.url, html)
+        self.assertNoLinkHealthInfo(response)
