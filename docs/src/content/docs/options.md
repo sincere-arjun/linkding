@@ -48,6 +48,23 @@ Disables background tasks, such as creating snapshots for bookmarks on the [the 
 Enabling this flag will prevent the background task processor from starting up, and prevents scheduling tasks.
 This might be useful if you are experiencing performance issues or other problematic behaviour due to background task processing.
 
+### `LD_LINK_CHECK_TIMEOUT`
+
+Values: `Float` | Default = `10`
+
+Timeout in seconds for a single request when checking whether a bookmark URL is still reachable.
+Link health checks first send a `HEAD` request and fall back to a `GET` request if that fails, so a check of an unresponsive URL can take up to twice this value.
+Link health checks can be enabled per user in the settings, and run in the background. They are not available when `LD_DISABLE_BACKGROUND_TASKS` is enabled.
+
+### `LD_LINK_CHECK_HOST_DELAY`
+
+Values: `Float` | Default = `1.0`
+
+Delay in seconds between checking two bookmarks on the same host, within one batch of link health checks.
+This avoids sending many requests to a website in a short time when checking a lot of bookmarks from the same site.
+The delay is not applied between the `HEAD` request and the `GET` fallback for the same bookmark, and separate batches can run in parallel on different background workers.
+Set to `0` to disable the delay.
+
 ### `LD_SUPERVISOR_MANAGED` (Experimental)
 
 Values: `True`, `False` | Default = `False`

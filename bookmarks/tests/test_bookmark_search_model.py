@@ -174,6 +174,31 @@ class BookmarkSearchModelTest(TestCase, BookmarkFactoryMixin):
             },
         )
 
+    def test_broken_param(self):
+        # defaults to off
+        search = BookmarkSearch()
+        self.assertEqual(search.broken, BookmarkSearch.FILTER_BROKEN_OFF)
+        self.assertFalse(search.is_modified("broken"))
+        self.assertEqual(search.query_params, {})
+
+        # from request
+        query_dict = QueryDict("broken=yes")
+        search = BookmarkSearch.from_request(None, query_dict)
+        self.assertEqual(search.broken, BookmarkSearch.FILTER_BROKEN_YES)
+        self.assertEqual(search.modified_params, ["broken"])
+        self.assertEqual(search.query_params, {"broken": "yes"})
+
+        # explicit default value is not modified
+        search = BookmarkSearch(broken=BookmarkSearch.FILTER_BROKEN_OFF)
+        self.assertEqual(search.modified_params, [])
+
+    def test_broken_param_is_not_a_preference(self):
+        self.assertNotIn("broken", BookmarkSearch.preferences)
+
+        search = BookmarkSearch(broken=BookmarkSearch.FILTER_BROKEN_YES)
+        self.assertNotIn("broken", search.preferences_dict)
+        self.assertFalse(search.has_modified_preferences)
+
     def test_modified_params(self):
         # no params
         bookmark_search = BookmarkSearch()
