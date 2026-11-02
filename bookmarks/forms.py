@@ -342,6 +342,8 @@ class UserProfileForm(forms.ModelForm):
             "collapse_side_panel",
             "hide_bundles",
             "legacy_search",
+            "enable_link_health_checks",
+            "link_health_check_interval",
         ]
         widgets = {
             "theme": FormSelect,
@@ -372,6 +374,8 @@ class UserProfileForm(forms.ModelForm):
             "enable_automatic_html_snapshots": FormCheckbox,
             "default_mark_unread": FormCheckbox,
             "default_mark_shared": FormCheckbox,
+            "enable_link_health_checks": FormCheckbox,
+            "link_health_check_interval": FormSelect,
         }
 
 

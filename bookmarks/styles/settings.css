@@ -22,6 +22,12 @@
     height: auto;
   }
 
+  .link-health h3 {
+    font-size: var(--font-size);
+    margin-top: var(--unit-6);
+    margin-bottom: var(--unit-2);
+  }
+
   section.about table {
     max-width: 400px;
   }

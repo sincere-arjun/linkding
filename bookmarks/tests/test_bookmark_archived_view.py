@@ -49,6 +49,24 @@ class BookmarkArchivedViewTestCase(
         self.assertVisibleBookmarks(response, visible_bookmarks)
         self.assertInvisibleBookmarks(response, invisible_bookmarks)
 
+    def test_should_list_broken_bookmarks_with_broken_filter(self):
+        visible_bookmarks = self.setup_numbered_bookmarks(
+            3, prefix="broken", archived=True
+        )
+        for bookmark in visible_bookmarks:
+            bookmark.link_broken = True
+            bookmark.save()
+        invisible_bookmarks = self.setup_numbered_bookmarks(
+            3, prefix="healthy", archived=True
+        )
+
+        response = self.client.get(
+            reverse("linkding:bookmarks.archived") + "?broken=yes"
+        )
+
+        self.assertVisibleBookmarks(response, visible_bookmarks)
+        self.assertInvisibleBookmarks(response, invisible_bookmarks)
+
     def test_should_list_bookmarks_matching_query(self):
         visible_bookmarks = self.setup_numbered_bookmarks(
             3, prefix="foo", archived=True
@@ -313,6 +331,7 @@ class BookmarkArchivedViewTestCase(
             <option value="bulk_read">Mark as read</option>
             <option value="bulk_unread">Mark as unread</option>
             <option value="bulk_refresh">Refresh from website</option>
+            <option value="bulk_check_links">Check links</option>
           </select>
         """,
             html,
@@ -335,6 +354,7 @@ class BookmarkArchivedViewTestCase(
             <option value="bulk_unread">Mark as unread</option>
             <option value="bulk_refresh">Refresh from website</option>
             <option value="bulk_snapshot">Create HTML snapshot</option>
+            <option value="bulk_check_links">Check links</option>
           </select>
         """,
             html,
@@ -361,6 +381,7 @@ class BookmarkArchivedViewTestCase(
             <option value="bulk_share">Share</option>
             <option value="bulk_unshare">Unshare</option>
             <option value="bulk_refresh">Refresh from website</option>
+            <option value="bulk_check_links">Check links</option>
           </select>
         """,
             html,
@@ -389,6 +410,7 @@ class BookmarkArchivedViewTestCase(
             <option value="bulk_unshare">Unshare</option>
             <option value="bulk_refresh">Refresh from website</option>
             <option value="bulk_snapshot">Create HTML snapshot</option>
+            <option value="bulk_check_links">Check links</option>
           </select>
         """,
             html,
