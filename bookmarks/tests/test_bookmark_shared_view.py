@@ -3,6 +3,7 @@ import urllib.parse
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from bookmarks.models import Bookmark, BookmarkSearch, UserProfile
 from bookmarks.tests.helpers import (
@@ -677,3 +678,83 @@ class BookmarkSharedViewTestCase(
         soup = self.make_soup(html)
         tag_menu = soup.find(attrs={"aria-label": "Tags menu"})
         self.assertIsNone(tag_menu)
+
+    def setup_broken_shared_bookmark(self, user: User, title: str = None):
+        bookmark = self.setup_bookmark(shared=True, user=user, title=title)
+        bookmark.link_status_code = 404
+        bookmark.link_check_error = "connection error"
+        bookmark.link_failure_count = 3
+        bookmark.link_last_checked = timezone.now()
+        bookmark.link_broken = True
+        bookmark.save()
+        return bookmark
+
+    def assertNoLinkHealthInfo(self, response):
+        html = response.content.decode()
+        soup = self.make_soup(html)
+        self.assertIsNone(soup.select_one(".link-broken-badge"))
+        self.assertIsNone(soup.select_one("ul.bookmark-list > li.link-broken"))
+        self.assertNotIn("Status code 404", html)
+        self.assertNotIn("connection error", html)
+        self.assertNotIn("last checked", html)
+
+    def test_should_not_show_link_health_of_other_users_bookmarks(self):
+        self.authenticate()
+        other_user = self.setup_user(enable_sharing=True)
+        bookmark = self.setup_broken_shared_bookmark(other_user)
+
+        response = self.client.get(reverse("linkding:bookmarks.shared"))
+
+        self.assertVisibleBookmarks(response, [bookmark])
+        self.assertNoLinkHealthInfo(response)
+
+    def test_should_not_show_link_health_of_publicly_shared_bookmarks_without_login(
+        self,
+    ):
+        user = self.setup_user(enable_sharing=True, enable_public_sharing=True)
+        bookmark = self.setup_broken_shared_bookmark(user)
+
+        response = self.client.get(reverse("linkding:bookmarks.shared"))
+
+        self.assertVisibleBookmarks(response, [bookmark])
+        self.assertNoLinkHealthInfo(response)
+
+    def test_should_ignore_broken_filter(self):
+        self.authenticate()
+        user = self.setup_user(enable_sharing=True)
+        broken_bookmark = self.setup_broken_shared_bookmark(user)
+        healthy_bookmark = self.setup_bookmark(shared=True, user=user)
+
+        response = self.client.get(reverse("linkding:bookmarks.shared") + "?broken=yes")
+
+        self.assertVisibleBookmarks(response, [broken_bookmark, healthy_bookmark])
+        # Filter is not carried through any of the forms on the page
+        soup = self.make_soup(response.content.decode())
+        self.assertIsNone(soup.select_one('input[name="broken"]'))
+
+    def test_should_ignore_broken_filter_without_login(self):
+        user = self.setup_user(enable_sharing=True, enable_public_sharing=True)
+        broken_bookmark = self.setup_broken_shared_bookmark(user)
+        healthy_bookmark = self.setup_bookmark(shared=True, user=user)
+
+        response = self.client.get(reverse("linkding:bookmarks.shared") + "?broken=yes")
+
+        self.assertVisibleBookmarks(response, [broken_bookmark, healthy_bookmark])
+        soup = self.make_soup(response.content.decode())
+        self.assertIsNone(soup.select_one('input[name="broken"]'))
+
+    def test_should_ignore_broken_filter_in_partial_update(self):
+        self.authenticate()
+        user = self.setup_user(enable_sharing=True)
+        broken_bookmark = self.setup_broken_shared_bookmark(user)
+        healthy_bookmark = self.setup_bookmark(shared=True, user=user)
+
+        response = self.client.post(
+            reverse("linkding:bookmarks.shared.action") + "?broken=yes",
+            {},
+            HTTP_ACCEPT="text/vnd.turbo-stream.html",
+        )
+        html = response.content.decode()
+
+        self.assertIn(healthy_bookmark.url, html)
+        self.assertIn(broken_bookmark.url, html)

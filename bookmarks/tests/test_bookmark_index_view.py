@@ -467,6 +467,44 @@ class BookmarkIndexViewTestCase(
             response.url, reverse("linkding:bookmarks.index") + "?q=foo&sort=title_asc"
         )
 
+    def test_save_search_preferences_does_not_save_broken_filter(self):
+        user_profile = self.user.profile
+
+        response = self.client.post(
+            reverse("linkding:bookmarks.index"),
+            {
+                "save": "",
+                "sort": BookmarkSearch.SORT_TITLE_ASC,
+                "unread": BookmarkSearch.FILTER_UNREAD_YES,
+                "broken": BookmarkSearch.FILTER_BROKEN_YES,
+            },
+        )
+
+        user_profile.refresh_from_db()
+        self.assertEqual(
+            user_profile.search_preferences,
+            {
+                "sort": BookmarkSearch.SORT_TITLE_ASC,
+                "shared": BookmarkSearch.FILTER_SHARED_OFF,
+                "unread": BookmarkSearch.FILTER_UNREAD_YES,
+            },
+        )
+        self.assertNotIn("broken", user_profile.search_preferences)
+
+        # The filter still applies to the current search
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.url, reverse("linkding:bookmarks.index") + "?broken=yes"
+        )
+
+        # And is not applied by default afterwards
+        broken_bookmark = self.setup_bookmark(unread=True)
+        broken_bookmark.link_broken = True
+        broken_bookmark.save()
+        healthy_bookmark = self.setup_bookmark(unread=True)
+        response = self.client.get(reverse("linkding:bookmarks.index"))
+        self.assertVisibleBookmarks(response, [broken_bookmark, healthy_bookmark])
+
     def test_save_search_preferences(self):
         user_profile = self.user.profile
 

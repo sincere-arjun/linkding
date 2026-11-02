@@ -684,6 +684,25 @@ class BookmarkListTemplateTest(TestCase, BookmarkFactoryMixin, HtmlTestMixin):
         list_item = soup.select_one("ul.bookmark-list > li")
         self.assertListEqual(["link-broken"], list_item["class"])
 
+    def test_broken_badge_reason_is_available_to_screen_readers(self):
+        bookmark = self.setup_broken_bookmark(link_status_code=410)
+        html = self.render_template()
+        soup = self.make_soup(html)
+
+        badge = soup.select_one(".link-broken-badge")
+        # Visible text stays "Broken"
+        self.assertEqual(badge.get_text(strip=True), "Broken")
+
+        description_id = badge.get("aria-describedby")
+        self.assertIsNotNone(description_id)
+        description = soup.find(id=description_id)
+        self.assertIsNotNone(description)
+        self.assertIn("text-assistive", description["class"])
+        self.assertEqual(
+            description.get_text(strip=True),
+            f"Status code 410, last checked: {self.format_last_checked(bookmark)}",
+        )
+
     def test_should_render_broken_badge_with_check_error(self):
         bookmark = self.setup_broken_bookmark(
             link_status_code=None, link_check_error="timeout"

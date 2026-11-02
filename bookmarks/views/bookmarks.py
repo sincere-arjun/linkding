@@ -118,13 +118,21 @@ def archived_update(request: HttpRequest):
     return render_bookmarks_update(request, bookmark_list, tag_cloud, details)
 
 
+def shared_search(request: HttpRequest) -> BookmarkSearch:
+    search = BookmarkSearch.from_request(
+        request, request.GET, request.user_profile.search_preferences
+    )
+    # Link health is private to the bookmark owner, so shared bookmarks can not
+    # be filtered by it
+    search.broken = BookmarkSearch.FILTER_BROKEN_OFF
+    return search
+
+
 def shared(request: HttpRequest):
     if request.method == "POST":
         return search_action(request)
 
-    search = BookmarkSearch.from_request(
-        request, request.GET, request.user_profile.search_preferences
-    )
+    search = shared_search(request)
     bookmark_list = contexts.SharedBookmarkListContext(request, search)
     tag_cloud = contexts.SharedTagCloudContext(request, search)
     bookmark_details = contexts.get_details_context(
@@ -145,9 +153,7 @@ def shared(request: HttpRequest):
 
 
 def shared_update(request: HttpRequest):
-    search = BookmarkSearch.from_request(
-        request, request.GET, request.user_profile.search_preferences
-    )
+    search = shared_search(request)
     bookmark_list = contexts.SharedBookmarkListContext(request, search)
     tag_cloud = contexts.SharedTagCloudContext(request, search)
     details = contexts.get_details_context(

@@ -4,13 +4,14 @@ from django.urls import reverse
 from django.utils import formats, timezone
 from playwright.sync_api import expect
 
+from bookmarks.models import Bookmark
 from bookmarks.services import tasks
 from bookmarks.tests_e2e.helpers import LinkdingE2ETestCase
 
 
 class LinkHealthE2ETestCase(LinkdingE2ETestCase):
-    def setup_broken_bookmark(self, title: str):
-        bookmark = self.setup_bookmark(title=title)
+    def setup_broken_bookmark(self, title: str, **kwargs):
+        bookmark = self.setup_bookmark(title=title, **kwargs)
         bookmark.link_status_code = 404
         bookmark.link_failure_count = 3
         bookmark.link_last_checked = timezone.now()
@@ -57,12 +58,30 @@ class LinkHealthE2ETestCase(LinkdingE2ETestCase):
         )
         expect(broken_badge).to_be_visible()
         expect(broken_badge).to_have_text("Broken")
-        expect(broken_badge).to_have_attribute(
-            "title", "Status code 404, last checked: " + self._last_checked_text()
-        )
+        reason = "Status code 404, last checked: " + self._last_checked_text()
+        expect(broken_badge).to_have_attribute("title", reason)
+        # The reason is also available to screen readers, not only on hover
+        expect(broken_badge).to_have_accessible_description(reason)
         expect(
             self.locate_bookmark("Healthy bookmark").locator(".link-broken-badge")
         ).to_have_count(0)
+
+    def test_no_broken_badge_for_other_users_shared_bookmarks(self):
+        other_user = self.setup_user(enable_sharing=True)
+        self.setup_broken_bookmark(
+            "Other user's broken bookmark", shared=True, user=other_user
+        )
+        profile = self.get_or_create_test_user().profile
+        profile.enable_sharing = True
+        profile.save()
+
+        self.open(reverse("linkding:bookmarks.shared") + "?broken=yes")
+
+        bookmark = self.locate_bookmark("Other user's broken bookmark")
+        expect(bookmark).to_be_visible()
+        expect(bookmark.locator(".link-broken-badge")).to_have_count(0)
+        expect(self.page.locator(".link-broken-badge")).to_have_count(0)
+        expect(self.page.get_by_text("Status code 404")).to_have_count(0)
 
     def test_broken_filter(self):
         self.setup_broken_bookmark("Broken bookmark")
@@ -112,9 +131,7 @@ class LinkHealthE2ETestCase(LinkdingE2ETestCase):
             )
 
     def _last_checked_text(self):
-        bookmark = self.get_or_create_test_user().bookmark_set.get(
-            title="Broken bookmark"
-        )
+        bookmark = Bookmark.objects.get(title="Broken bookmark")
         return formats.date_format(
             timezone.localtime(bookmark.link_last_checked), "SHORT_DATETIME_FORMAT"
         )
