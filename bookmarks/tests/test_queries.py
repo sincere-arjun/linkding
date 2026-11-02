@@ -1045,6 +1045,20 @@ class QueriesBasicTestCase(TestCase, BookmarkFactoryMixin):
         )
         self.assertQueryResult(query_set, [[bookmark1]])
 
+    def test_query_shared_bookmarks_ignores_broken_filter(self):
+        user = self.setup_user(enable_sharing=True)
+        healthy = self.setup_bookmark(user=user, shared=True)
+        broken = self.setup_bookmark(user=user, shared=True)
+        broken.link_broken = True
+        broken.save()
+
+        search = BookmarkSearch(broken=BookmarkSearch.FILTER_BROKEN_YES)
+        query_set = queries.query_shared_bookmarks(None, self.profile, search, False)
+        self.assertQueryResult(query_set, [[healthy, broken]])
+
+        query_set = queries.query_shared_bookmarks(user, self.profile, search, False)
+        self.assertQueryResult(query_set, [[healthy, broken]])
+
     def test_query_shared_bookmark_tags(self):
         user1 = self.setup_user(enable_sharing=True)
         user2 = self.setup_user(enable_sharing=True)
