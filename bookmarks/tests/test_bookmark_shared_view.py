@@ -758,3 +758,31 @@ class BookmarkSharedViewTestCase(
 
         self.assertIn(healthy_bookmark.url, html)
         self.assertIn(broken_bookmark.url, html)
+        self.assertNoLinkHealthInfo(response)
+
+    def assertNoBrokenFilter(self, response):
+        soup = self.make_soup(response.content.decode())
+        self.assertIsNone(soup.select_one('[aria-labelledby="search-broken-label"]'))
+        self.assertIsNone(soup.select_one("#search-broken-label"))
+        self.assertEqual(soup.select('input[name="broken"]'), [])
+
+    def test_should_not_render_broken_filter(self):
+        self.authenticate()
+        user = self.setup_user(enable_sharing=True)
+        self.setup_broken_shared_bookmark(user)
+
+        response = self.client.get(reverse("linkding:bookmarks.shared"))
+        self.assertNoBrokenFilter(response)
+
+        response = self.client.get(reverse("linkding:bookmarks.shared") + "?broken=yes")
+        self.assertNoBrokenFilter(response)
+
+    def test_should_not_render_broken_filter_without_login(self):
+        user = self.setup_user(enable_sharing=True, enable_public_sharing=True)
+        self.setup_broken_shared_bookmark(user)
+
+        response = self.client.get(reverse("linkding:bookmarks.shared"))
+        self.assertNoBrokenFilter(response)
+
+        response = self.client.get(reverse("linkding:bookmarks.shared") + "?broken=yes")
+        self.assertNoBrokenFilter(response)
