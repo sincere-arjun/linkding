@@ -7,7 +7,7 @@ from unittest import mock
 
 from django.test import override_settings
 from django.urls import reverse
-from playwright.sync_api import expect
+from playwright.sync_api import BrowserContext, expect
 
 from bookmarks.services import http_client
 from bookmarks.services.link_health import check_bookmarks
@@ -89,6 +89,36 @@ class LinkHealthFilterE2ETestCase(LinkdingE2ETestCase):
         self.link_server = LocalLinkServer()
         self.addCleanup(self.link_server.stop)
 
+    def setup_browser(self) -> BrowserContext:
+        # Set LD_E2E_VIDEO_DIR to record a video of the test
+        self.video_dir = os.environ.get("LD_E2E_VIDEO_DIR")
+        if not self.video_dir:
+            return super().setup_browser()
+
+        self._ensure_playwright()
+        context = self.browser.new_context(
+            record_video_dir=self.video_dir,
+            record_video_size={"width": 1280, "height": 720},
+            viewport={"width": 1280, "height": 720},
+        )
+        context.add_cookies(
+            [
+                {
+                    "name": "ld_sessionid",
+                    "value": self.cookie.value,
+                    "domain": self.live_server_url.replace("http:", ""),
+                    "path": "/",
+                }
+            ]
+        )
+        return context
+
+    def tearDown(self) -> None:
+        if self.context and self.video_dir and not self._test_has_failed():
+            # Closing the context finishes writing the video
+            self.context.close()
+        super().tearDown()
+
     def test_broken_filter_shows_only_broken_bookmarks(self):
         ok_bookmark = self.setup_bookmark(
             url=self.link_server.url("/ok"), title="Healthy link"
@@ -127,12 +157,16 @@ class LinkHealthFilterE2ETestCase(LinkdingE2ETestCase):
 
         # enable broken filter
         page.get_by_role("button", name="Search preferences").click()
-        page.locator("label").filter(
-            has=page.locator('input[name="broken"][value="yes"]')
-        ).click()
+        filter_group = page.get_by_role("radiogroup", name="Link health filter")
+        filter_group.get_by_text("Broken").click()
         page.get_by_role("button", name="Apply").click()
 
-        expect(page.locator('input[name="broken"][value="yes"]')).to_be_checked()
+        expect(page).to_have_url(
+            self.live_server_url + reverse("linkding:bookmarks.index") + "?broken=yes"
+        )
+        expect(
+            page.locator('input[type="radio"][name="broken"][value="yes"]')
+        ).to_be_checked()
         expect(self.locate_bookmark("Healthy link")).to_have_count(0)
         expect(self.locate_bookmark("Missing link")).to_be_visible()
         expect(self.locate_bookmark("Slow link")).to_be_visible()
@@ -146,3 +180,7 @@ class LinkHealthFilterE2ETestCase(LinkdingE2ETestCase):
         slow_badge = self.locate_bookmark("Slow link").locator(".link-broken-badge")
         expect(slow_badge).to_have_text("Broken")
         expect(slow_badge).to_have_attribute("title", re.compile("timeout"))
+
+        if self.video_dir:
+            # Keep the filtered result on screen for a moment in the recording
+            page.wait_for_timeout(1500)
