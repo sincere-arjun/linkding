@@ -1,5 +1,6 @@
 from unittest import mock
 
+import requests
 from django.test import TestCase, override_settings
 
 from bookmarks.services import http_client, link_health
@@ -43,7 +44,7 @@ class CheckUrlTestCase(TestCase):
         self.mock_get.assert_not_called()
         head_response.close.assert_called_once()
 
-    def test_head_redirect_status_is_ok(self):
+    def test_head_status_below_400_is_ok(self):
         self.mock_head.return_value = mock_response(399)
 
         result = check_url("https://example.com", timeout=5)
@@ -91,18 +92,60 @@ class CheckUrlTestCase(TestCase):
         self.assertEqual(result, LinkCheckResult(status_code=200, error="", ok=True))
         self.mock_get.assert_called_once()
 
-    def test_get_response_is_closed(self):
-        self.mock_head.return_value = mock_response(500)
+    def test_head_and_get_responses_are_closed(self):
+        head_response = mock_response(500)
+        self.mock_head.return_value = head_response
         get_response = mock_response(200)
         self.mock_get.return_value = get_response
 
         check_url("https://example.com", timeout=5)
 
+        head_response.close.assert_called_once()
         get_response.close.assert_called_once()
+
+    def test_get_error_response_is_closed(self):
+        head_response = mock_response(404)
+        self.mock_head.return_value = head_response
+        get_response = mock_response(404)
+        self.mock_get.return_value = get_response
+
+        check_url("https://example.com", timeout=5)
+
+        head_response.close.assert_called_once()
+        get_response.close.assert_called_once()
+
+    def test_head_error_status_then_get_timeout(self):
+        self.mock_head.return_value = mock_response(404)
+        self.mock_get.side_effect = http_client.Timeout()
+
+        result = check_url("https://example.com", timeout=5)
+
+        self.assertEqual(
+            result, LinkCheckResult(status_code=None, error="timeout", ok=False)
+        )
+
+    def test_head_timeout_then_get_error_status(self):
+        self.mock_head.side_effect = http_client.Timeout()
+        self.mock_get.return_value = mock_response(404)
+
+        result = check_url("https://example.com", timeout=5)
+
+        self.assertEqual(result, LinkCheckResult(status_code=404, error="", ok=False))
 
     def test_timeout(self):
         self.mock_head.side_effect = http_client.Timeout()
         self.mock_get.side_effect = http_client.Timeout()
+
+        result = check_url("https://example.com", timeout=5)
+
+        self.assertEqual(
+            result, LinkCheckResult(status_code=None, error="timeout", ok=False)
+        )
+
+    def test_connect_timeout_is_reported_as_timeout(self):
+        # ConnectTimeout is both a ConnectionError and a Timeout
+        self.mock_head.side_effect = requests.ConnectTimeout()
+        self.mock_get.side_effect = requests.ConnectTimeout()
 
         result = check_url("https://example.com", timeout=5)
 
@@ -389,7 +432,7 @@ class CheckBookmarksTestCase(TestCase, BookmarkFactoryMixin):
 
         mock_check_url.assert_called_once_with("https://example.com/1")
 
-    def test_does_not_make_real_requests(self):
+    def test_records_result_of_mocked_head_request(self):
         bookmark = self.setup_bookmark(url="https://example.com/1")
 
         with (

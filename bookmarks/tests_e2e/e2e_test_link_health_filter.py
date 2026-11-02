@@ -1,7 +1,9 @@
+import os
 import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest import mock
 
 from django.test import override_settings
 from django.urls import reverse
@@ -11,9 +13,10 @@ from bookmarks.services import http_client
 from bookmarks.services.link_health import check_bookmarks
 from bookmarks.tests_e2e.helpers import LinkdingE2ETestCase
 
-CHECK_TIMEOUT = 0.3
+# Generous enough that /ok and /missing answer in time on a loaded machine
+CHECK_TIMEOUT = 1
 # Well above the check timeout, so that requests to /slow always time out
-SLOW_RESPONSE_DELAY = 2
+SLOW_RESPONSE_DELAY = 3
 
 
 class LinkHealthRequestHandler(BaseHTTPRequestHandler):
@@ -71,6 +74,17 @@ class LinkHealthFilterE2ETestCase(LinkdingE2ETestCase):
         # The allowlist is cached, pick up the overridden setting
         http_client.get_allowlist.cache_clear()
         self.addCleanup(http_client.get_allowlist.cache_clear)
+
+        # Make sure requests to the local server never go through a proxy.
+        # patch.dict restores the whole environment, including removed keys.
+        env_patcher = mock.patch.dict(
+            os.environ, {"NO_PROXY": "127.0.0.1", "no_proxy": "127.0.0.1"}
+        )
+        env_patcher.start()
+        self.addCleanup(env_patcher.stop)
+        for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+            os.environ.pop(name, None)
+            os.environ.pop(name.lower(), None)
 
         self.link_server = LocalLinkServer()
         self.addCleanup(self.link_server.stop)
