@@ -6,6 +6,7 @@ from django.core.paginator import Paginator
 from django.db import models
 from django.http import Http404
 from django.urls import reverse
+from django.utils import formats, timezone
 
 from bookmarks import queries, utils
 from bookmarks.forms import BookmarkSearchForm
@@ -168,12 +169,18 @@ class BookmarkItem:
         self.unread = bookmark.unread
         self.owner = bookmark.owner
         self.details_url = context.details(bookmark.id)
+        self.link_broken = bookmark.link_broken
+        self.link_health_title = (
+            self._link_health_title(bookmark) if bookmark.link_broken else ""
+        )
 
         css_classes = []
         if bookmark.unread:
             css_classes.append("unread")
         if bookmark.shared:
             css_classes.append("shared")
+        if bookmark.link_broken:
+            css_classes.append("link-broken")
 
         self.css_classes = " ".join(css_classes)
 
@@ -191,6 +198,25 @@ class BookmarkItem:
         self.has_extra_actions = (
             self.show_notes_button or self.show_mark_as_read or self.show_unshare
         )
+
+    @staticmethod
+    def _link_health_title(bookmark: Bookmark) -> str:
+        if bookmark.link_status_code is not None:
+            problem = f"Status code {bookmark.link_status_code}"
+        elif bookmark.link_check_error:
+            problem = f"Error: {bookmark.link_check_error}"
+        else:
+            problem = "Link check failed"
+
+        if bookmark.link_last_checked:
+            last_checked = formats.date_format(
+                timezone.localtime(bookmark.link_last_checked),
+                "SHORT_DATETIME_FORMAT",
+            )
+        else:
+            last_checked = "never"
+
+        return f"{problem}, last checked: {last_checked}"
 
 
 class BookmarkListContext:

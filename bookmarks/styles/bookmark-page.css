@@ -314,6 +314,17 @@ ul.bookmark-list {
           --btn-icon-color: var(--bookmark-actions-hover-color);
         }
       }
+
+      & .link-broken-badge {
+        color: var(--error-color);
+        background: var(--error-color-shade);
+        border: 1px solid var(--error-color);
+        border-radius: var(--border-radius);
+        padding: 0 var(--unit-1);
+        line-height: 1.2;
+        font-weight: bold;
+        cursor: help;
+      }
     }
   }
 }

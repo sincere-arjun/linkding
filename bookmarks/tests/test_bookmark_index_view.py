@@ -73,6 +73,31 @@ class BookmarkIndexViewTestCase(
         self.assertVisibleBookmarks(response, visible_bookmarks)
         self.assertInvisibleBookmarks(response, invisible_bookmarks)
 
+    def test_should_list_broken_bookmarks_with_broken_filter(self):
+        visible_bookmarks = self.setup_numbered_bookmarks(3, prefix="broken")
+        for bookmark in visible_bookmarks:
+            bookmark.link_broken = True
+            bookmark.save()
+        invisible_bookmarks = self.setup_numbered_bookmarks(3, prefix="healthy")
+
+        response = self.client.get(reverse("linkding:bookmarks.index") + "?broken=yes")
+
+        self.assertVisibleBookmarks(response, visible_bookmarks)
+        self.assertInvisibleBookmarks(response, invisible_bookmarks)
+
+        # Filter is off by default
+        response = self.client.get(reverse("linkding:bookmarks.index"))
+        self.assertVisibleBookmarks(response, visible_bookmarks + invisible_bookmarks)
+
+    def test_should_render_broken_filter_in_search_preferences(self):
+        response = self.client.get(reverse("linkding:bookmarks.index") + "?broken=yes")
+        soup = self.make_soup(response.content.decode())
+
+        preferences_form = soup.select_one("form#search_preferences")
+        checked = preferences_form.select_one('input[name="broken"][checked]')
+        self.assertIsNotNone(checked)
+        self.assertEqual(checked["value"], "yes")
+
     def test_should_list_bookmarks_matching_bundle(self):
         visible_bookmarks = self.setup_numbered_bookmarks(3, prefix="foo")
         invisible_bookmarks = self.setup_numbered_bookmarks(3, prefix="bar")
@@ -308,6 +333,7 @@ class BookmarkIndexViewTestCase(
             <option value="bulk_read">Mark as read</option>
             <option value="bulk_unread">Mark as unread</option>
             <option value="bulk_refresh">Refresh from website</option>
+            <option value="bulk_check_links">Check links</option>
           </select>
         """,
             html,
@@ -330,6 +356,7 @@ class BookmarkIndexViewTestCase(
             <option value="bulk_unread">Mark as unread</option>
             <option value="bulk_refresh">Refresh from website</option>
             <option value="bulk_snapshot">Create HTML snapshot</option>
+            <option value="bulk_check_links">Check links</option>
           </select>
         """,
             html,
@@ -356,6 +383,7 @@ class BookmarkIndexViewTestCase(
             <option value="bulk_share">Share</option>
             <option value="bulk_unshare">Unshare</option>
             <option value="bulk_refresh">Refresh from website</option>
+            <option value="bulk_check_links">Check links</option>
           </select>
         """,
             html,
@@ -384,6 +412,7 @@ class BookmarkIndexViewTestCase(
             <option value="bulk_unshare">Unshare</option>
             <option value="bulk_refresh">Refresh from website</option>
             <option value="bulk_snapshot">Create HTML snapshot</option>
+            <option value="bulk_check_links">Check links</option>
           </select>
         """,
             html,

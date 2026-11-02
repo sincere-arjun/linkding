@@ -16,7 +16,7 @@ def bookmark_search(context, search: BookmarkSearch, mode: str = ""):
         preferences_form = BookmarkSearchForm(search, editable_fields=["sort"])
     else:
         preferences_form = BookmarkSearchForm(
-            search, editable_fields=["sort", "shared", "unread"]
+            search, editable_fields=["sort", "shared", "unread", "broken"]
         )
     return {
         "request": context["request"],
