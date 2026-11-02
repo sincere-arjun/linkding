@@ -83,6 +83,14 @@ class LinkHealthE2ETestCase(LinkdingE2ETestCase):
         expect(self.page.locator(".link-broken-badge")).to_have_count(0)
         expect(self.page.get_by_text("Status code 404")).to_have_count(0)
 
+        # The search preferences offer no link health filter on the shared page
+        self.page.get_by_role("button", name="Search preferences").click()
+        expect(self.page.locator("form#search_preferences")).to_be_visible()
+        expect(
+            self.page.get_by_role("radiogroup", name="Link health filter")
+        ).to_have_count(0)
+        expect(self.page.locator('input[name="broken"]')).to_have_count(0)
+
     def test_broken_filter(self):
         self.setup_broken_bookmark("Broken bookmark")
         self.setup_bookmark(title="Healthy bookmark")

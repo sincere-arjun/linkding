@@ -98,6 +98,14 @@ class BookmarkIndexViewTestCase(
         self.assertIsNotNone(checked)
         self.assertEqual(checked["value"], "yes")
 
+        response = self.client.get(reverse("linkding:bookmarks.index"))
+        soup = self.make_soup(response.content.decode())
+        preferences_form = soup.select_one("form#search_preferences")
+        group = preferences_form.select_one('[aria-labelledby="search-broken-label"]')
+        self.assertIsNotNone(group)
+        radios = group.select('input[name="broken"][type="radio"]')
+        self.assertEqual([radio["value"] for radio in radios], ["off", "yes"])
+
     def test_should_list_bookmarks_matching_bundle(self):
         visible_bookmarks = self.setup_numbered_bookmarks(3, prefix="foo")
         invisible_bookmarks = self.setup_numbered_bookmarks(3, prefix="bar")
