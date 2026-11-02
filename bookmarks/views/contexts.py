@@ -169,9 +169,10 @@ class BookmarkItem:
         self.unread = bookmark.unread
         self.owner = bookmark.owner
         self.details_url = context.details(bookmark.id)
-        self.link_broken = bookmark.link_broken
+        # Link health is only visible to the owner of the bookmark
+        self.link_broken = is_editable and bookmark.link_broken
         self.link_health_title = (
-            self._link_health_title(bookmark) if bookmark.link_broken else ""
+            self._link_health_title(bookmark) if self.link_broken else ""
         )
 
         css_classes = []
@@ -179,7 +180,7 @@ class BookmarkItem:
             css_classes.append("unread")
         if bookmark.shared:
             css_classes.append("shared")
-        if bookmark.link_broken:
+        if self.link_broken:
             css_classes.append("link-broken")
 
         self.css_classes = " ".join(css_classes)
