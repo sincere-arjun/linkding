@@ -761,6 +761,102 @@ class BookmarkActionViewTestCase(
         self.assertTrue(Bookmark.objects.get(id=bookmark2.id).shared)
         self.assertTrue(Bookmark.objects.get(id=bookmark3.id).shared)
 
+    def test_bulk_check_links(self):
+        bookmark1 = self.setup_bookmark()
+        bookmark2 = self.setup_bookmark()
+        bookmark3 = self.setup_bookmark()
+
+        with patch.object(tasks, "_check_link_health_task") as mock_task:
+            response = self.client.post(
+                reverse("linkding:bookmarks.index.action"),
+                {
+                    "bulk_action": ["bulk_check_links"],
+                    "bulk_execute": [""],
+                    "bookmark_id": [str(bookmark1.id), str(bookmark3.id)],
+                },
+            )
+
+        self.assertEqual(response.status_code, 302)
+        mock_task.assert_called_once()
+        checked_ids = mock_task.call_args.args[0]
+        self.assertCountEqual(checked_ids, [bookmark1.id, bookmark3.id])
+        self.assertNotIn(bookmark2.id, checked_ids)
+
+    def test_bulk_check_links_calls_service_with_current_user(self):
+        bookmark1 = self.setup_bookmark()
+        bookmark2 = self.setup_bookmark()
+
+        with patch(
+            "bookmarks.views.bookmarks.check_bookmark_links", return_value=None
+        ) as mock_check_bookmark_links:
+            self.client.post(
+                reverse("linkding:bookmarks.index.action"),
+                {
+                    "bulk_action": ["bulk_check_links"],
+                    "bulk_execute": [""],
+                    "bookmark_id": [str(bookmark1.id), str(bookmark2.id)],
+                },
+            )
+
+        mock_check_bookmark_links.assert_called_once()
+        bookmark_ids, user = mock_check_bookmark_links.call_args.args
+        self.assertEqual(list(bookmark_ids), [str(bookmark1.id), str(bookmark2.id)])
+        self.assertEqual(user, self.get_or_create_test_user())
+
+    def test_can_only_bulk_check_links_of_own_bookmarks(self):
+        other_user = self.setup_user()
+        own_bookmark = self.setup_bookmark()
+        other_bookmark = self.setup_bookmark(user=other_user)
+
+        with patch.object(tasks, "_check_link_health_task") as mock_task:
+            self.client.post(
+                reverse("linkding:bookmarks.index.action"),
+                {
+                    "bulk_action": ["bulk_check_links"],
+                    "bulk_execute": [""],
+                    "bookmark_id": [str(own_bookmark.id), str(other_bookmark.id)],
+                },
+            )
+
+        mock_task.assert_called_once()
+        self.assertEqual(list(mock_task.call_args.args[0]), [own_bookmark.id])
+
+    def test_bulk_check_links_select_across_respects_broken_filter(self):
+        broken_bookmark = self.setup_bookmark()
+        broken_bookmark.link_broken = True
+        broken_bookmark.save()
+        self.setup_bookmark()
+
+        with patch.object(tasks, "_check_link_health_task") as mock_task:
+            self.client.post(
+                reverse("linkding:bookmarks.index.action") + "?broken=yes",
+                {
+                    "bulk_action": ["bulk_check_links"],
+                    "bulk_execute": [""],
+                    "bulk_select_across": ["on"],
+                },
+            )
+
+        mock_task.assert_called_once()
+        self.assertEqual(list(mock_task.call_args.args[0]), [broken_bookmark.id])
+
+    @override_settings(LD_DISABLE_BACKGROUND_TASKS=True)
+    def test_bulk_check_links_does_nothing_when_background_tasks_disabled(self):
+        bookmark = self.setup_bookmark()
+
+        with patch.object(tasks, "_check_link_health_task") as mock_task:
+            response = self.client.post(
+                reverse("linkding:bookmarks.index.action"),
+                {
+                    "bulk_action": ["bulk_check_links"],
+                    "bulk_execute": [""],
+                    "bookmark_id": [str(bookmark.id)],
+                },
+            )
+
+        self.assertEqual(response.status_code, 302)
+        mock_task.assert_not_called()
+
     def test_bulk_select_across(self):
         bookmark1 = self.setup_bookmark()
         bookmark2 = self.setup_bookmark()

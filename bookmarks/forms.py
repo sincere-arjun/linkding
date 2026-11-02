@@ -264,6 +264,10 @@ class BookmarkSearchForm(forms.Form):
         (BookmarkSearch.FILTER_UNREAD_YES, "Unread"),
         (BookmarkSearch.FILTER_UNREAD_NO, "Read"),
     ]
+    FILTER_BROKEN_CHOICES = [
+        (BookmarkSearch.FILTER_BROKEN_OFF, "Off"),
+        (BookmarkSearch.FILTER_BROKEN_YES, "Broken"),
+    ]
 
     q = forms.CharField()
     user = forms.ChoiceField(required=False, widget=FormSelect)
@@ -273,6 +277,7 @@ class BookmarkSearchForm(forms.Form):
     unread = forms.ChoiceField(choices=FILTER_UNREAD_CHOICES, widget=forms.RadioSelect)
     modified_since = forms.CharField(required=False)
     added_since = forms.CharField(required=False)
+    broken = forms.ChoiceField(choices=FILTER_BROKEN_CHOICES, widget=forms.RadioSelect)
 
     def __init__(
         self,
@@ -337,6 +342,8 @@ class UserProfileForm(forms.ModelForm):
             "collapse_side_panel",
             "hide_bundles",
             "legacy_search",
+            "enable_link_health_checks",
+            "link_health_check_interval",
         ]
         widgets = {
             "theme": FormSelect,
@@ -367,6 +374,8 @@ class UserProfileForm(forms.ModelForm):
             "enable_automatic_html_snapshots": FormCheckbox,
             "default_mark_unread": FormCheckbox,
             "default_mark_shared": FormCheckbox,
+            "enable_link_health_checks": FormCheckbox,
+            "link_health_check_interval": FormSelect,
         }
 
 

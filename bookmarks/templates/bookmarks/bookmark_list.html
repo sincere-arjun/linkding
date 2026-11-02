@@ -61,6 +61,12 @@
               </div>
             {% endif %}
             <div class="actions">
+              {% if bookmark_item.link_broken %}
+                <span class="link-broken-badge"
+                      title="{{ bookmark_item.link_health_title }}"
+                      aria-describedby="link-health-{{ bookmark_item.id }}">Broken</span>
+                <span id="link-health-{{ bookmark_item.id }}" class="text-assistive">{{ bookmark_item.link_health_title }}</span>
+              {% endif %}
               {% if bookmark_item.display_date %}
                 {% if bookmark_item.snapshot_url %}
                   <a href="{{ bookmark_item.snapshot_url }}"

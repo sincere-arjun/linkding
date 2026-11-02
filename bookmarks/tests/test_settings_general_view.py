@@ -9,11 +9,11 @@ from requests import RequestException
 
 from bookmarks.models import GlobalSettings, UserProfile
 from bookmarks.services import tasks
-from bookmarks.tests.helpers import BookmarkFactoryMixin
+from bookmarks.tests.helpers import BookmarkFactoryMixin, HtmlTestMixin
 from bookmarks.views.settings import app_version, get_version_info
 
 
-class SettingsGeneralViewTestCase(TestCase, BookmarkFactoryMixin):
+class SettingsGeneralViewTestCase(TestCase, BookmarkFactoryMixin, HtmlTestMixin):
     def setUp(self) -> None:
         user = self.get_or_create_test_user()
         self.client.force_login(user)
@@ -49,6 +49,8 @@ class SettingsGeneralViewTestCase(TestCase, BookmarkFactoryMixin):
             "collapse_side_panel": False,
             "hide_bundles": False,
             "legacy_search": False,
+            "enable_link_health_checks": False,
+            "link_health_check_interval": 24,
         }
 
         return {**form_data, **overrides}
@@ -123,6 +125,8 @@ class SettingsGeneralViewTestCase(TestCase, BookmarkFactoryMixin):
             "collapse_side_panel": True,
             "hide_bundles": True,
             "legacy_search": True,
+            "enable_link_health_checks": True,
+            "link_health_check_interval": 168,
         }
         response = self.client.post(
             reverse("linkding:settings.update"), form_data, follow=True
@@ -208,8 +212,87 @@ class SettingsGeneralViewTestCase(TestCase, BookmarkFactoryMixin):
         )
         self.assertEqual(self.user.profile.hide_bundles, form_data["hide_bundles"])
         self.assertEqual(self.user.profile.legacy_search, form_data["legacy_search"])
+        self.assertEqual(
+            self.user.profile.enable_link_health_checks,
+            form_data["enable_link_health_checks"],
+        )
+        self.assertEqual(
+            self.user.profile.link_health_check_interval,
+            form_data["link_health_check_interval"],
+        )
 
         self.assertSuccessMessage(html, "Profile updated")
+
+    def test_update_profile_link_health_settings(self):
+        form_data = self.create_profile_form_data(
+            {"enable_link_health_checks": True, "link_health_check_interval": 6}
+        )
+        response = self.client.post(reverse("linkding:settings.update"), form_data)
+
+        self.assertEqual(response.status_code, 302)
+        self.user.profile.refresh_from_db()
+        self.assertTrue(self.user.profile.enable_link_health_checks)
+        self.assertEqual(self.user.profile.link_health_check_interval, 6)
+
+        form_data = self.create_profile_form_data(
+            {"enable_link_health_checks": False, "link_health_check_interval": 24}
+        )
+        self.client.post(reverse("linkding:settings.update"), form_data)
+
+        self.user.profile.refresh_from_db()
+        self.assertFalse(self.user.profile.enable_link_health_checks)
+        self.assertEqual(self.user.profile.link_health_check_interval, 24)
+
+    def test_update_profile_with_invalid_link_health_check_interval_returns_422(self):
+        form_data = self.create_profile_form_data({"link_health_check_interval": 7})
+        response = self.client.post(reverse("linkding:settings.update"), form_data)
+
+        self.assertEqual(response.status_code, 422)
+        self.user.profile.refresh_from_db()
+        self.assertEqual(self.user.profile.link_health_check_interval, 24)
+
+    def test_link_health_section(self):
+        response = self.client.get(reverse("linkding:settings.general"))
+        soup = self.make_soup(response.content.decode())
+
+        group = soup.select_one('[aria-labelledby="link-health-heading"]')
+        self.assertIsNotNone(group)
+        self.assertEqual(group.select_one("h3").get_text(strip=True), "Link health")
+
+        checkbox = group.select_one('input[name="enable_link_health_checks"]')
+        self.assertIsNotNone(checkbox)
+        self.assertEqual(checkbox.attrs["type"], "checkbox")
+        self.assertNotIn("checked", checkbox.attrs)
+
+        select = group.select_one('select[name="link_health_check_interval"]')
+        self.assertIsNotNone(select)
+        options = [
+            (option.attrs["value"], option.get_text(strip=True))
+            for option in select.select("option")
+        ]
+        self.assertEqual(
+            options,
+            [
+                ("6", "Every 6 hours"),
+                ("12", "Every 12 hours"),
+                ("24", "Daily"),
+                ("168", "Weekly"),
+            ],
+        )
+        self.assertIn("selected", select.select_one('option[value="24"]').attrs)
+
+        # Saved values are reflected in the form
+        self.user.profile.enable_link_health_checks = True
+        self.user.profile.link_health_check_interval = 168
+        self.user.profile.save()
+
+        response = self.client.get(reverse("linkding:settings.general"))
+        soup = self.make_soup(response.content.decode())
+        group = soup.select_one('[aria-labelledby="link-health-heading"]')
+        checkbox = group.select_one('input[name="enable_link_health_checks"]')
+        self.assertIn("checked", checkbox.attrs)
+        select = group.select_one('select[name="link_health_check_interval"]')
+        self.assertIn("selected", select.select_one('option[value="168"]').attrs)
 
     def test_update_profile_with_invalid_form_returns_422(self):
         form_data = self.create_profile_form_data({"items_per_page": "-1"})

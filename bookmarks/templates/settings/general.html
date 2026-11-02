@@ -221,6 +221,26 @@ reddit.com/r/Music music reddit</pre>
             This can be overridden when creating each new bookmark.
           {% endformhelp %}
         </div>
+        <div class="link-health"
+             role="group"
+             aria-labelledby="link-health-heading">
+          <h3 id="link-health-heading">Link health</h3>
+          <div class="form-group">
+            {% formfield form.enable_link_health_checks label="Enable periodic link health checks" has_help=True %}
+            {% formhelp form.enable_link_health_checks %}
+              Periodically checks whether bookmarked websites are still reachable, including archived bookmarks.
+              Bookmarks that fail three checks in a row are marked as broken, and can be found using the link health
+              filter in the search options. Links can also be checked manually using the "Check links" bulk action.
+            {% endformhelp %}
+          </div>
+          <div class="form-group">
+            {% formlabel form.link_health_check_interval "Check interval" %}
+            {% formfield form.link_health_check_interval has_help=True class="width-25 width-sm-100" %}
+            {% formhelp form.link_health_check_interval %}
+              How often each bookmark is checked when periodic link health checks are enabled.
+            {% endformhelp %}
+          </div>
+        </div>
         <div class="form-group">
           <details {% if form.custom_css.value %}open{% endif %}>
             <summary>
